@@ -27,7 +27,7 @@ class DocumentIngestor:
         chunks = self.text_splitter.split_documents(documents)
         # Create index if not exists
         if self.pinecone_index not in pinecone.list_indexes():
-            pinecone.create_index(self.pinecone_index, dimension=1536, metric="cosine")
+            pinecone.create_index(self.pinecone_index, dimension=1024, metric="cosine")
         vectorstore = PineconeVectorStore.from_documents(
             chunks,
             embedding=self.embeddings,

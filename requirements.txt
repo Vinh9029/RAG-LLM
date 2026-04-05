@@ -1,13 +1,13 @@
 langchain==0.1.20
-langchain-core==0.1.48
+langchain-core==0.1.53
 langchain-community==0.0.38
-langchain-openai==0.1.8
+langchain-openai==0.0.8
 python-dotenv==1.0.0
 openai==1.28.0
 faiss-cpu==1.7.4
-pypdf==4.1.1
-cross-encoder==2.0.0
+pypdf==4.1.0
 sentence-transformers==2.3.0
+langdetect==1.0.9
 numpy==1.24.3
 pinecone-client==3.2.2
 langchain-pinecone==0.0.3
