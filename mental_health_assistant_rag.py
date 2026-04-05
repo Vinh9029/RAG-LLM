@@ -18,9 +18,10 @@ from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 # Vector Store & Embeddings
-from langchain_community.vectorstores import FAISS
+from langchain_pinecone import PineconeVectorStore
+import pinecone
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI # Bạn có thể thay bằng LLM của bạn sau
-
+from dotenv import load_dotenv
 # Retrievers & Rerankers
 from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import CrossEncoderReranker
@@ -46,25 +47,29 @@ memory = ConversationBufferWindowMemory(
 # ---------------------------------------------------------
 # 2. TEXT SPLITTING & CHUNKING (Tối ưu cho tài liệu Mental Health)
 # ---------------------------------------------------------
-def process_pdf_documents(pdf_directory: str):
-    """
-    Load tài liệu PDF và chia nhỏ (chunking).
-    - chunk_size = 1000: Đủ dài để chứa trọn vẹn một đoạn văn mô tả bài tập tâm lý hoặc lời khuyên.
-    - chunk_overlap = 200: Giữ lại sự liên kết ngữ nghĩa giữa các đoạn (rất quan trọng cho văn bản y tế/tâm lý).
-    """
+def process_pdf_documents_to_pinecone(pdf_directory: str, namespace: str = "cbt"):
     loader = PyPDFDirectoryLoader(pdf_directory)
     documents = loader.load()
-    
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=200,
         separators=["\n\n", "\n", ".", "!", "?", " ", ""]
     )
-    
     chunks = text_splitter.split_documents(documents)
-    
-    # Tạo Vector Database (FAISS)
-    vectorstore = FAISS.from_documents(chunks, embeddings)
+    load_dotenv()
+    pinecone_api_key = os.getenv("PINECONE_API_KEY")
+    pinecone_env = os.getenv("PINECONE_ENVIRONMENT")
+    pinecone_index = os.getenv("PINECONE_INDEX")
+    pinecone.init(api_key=pinecone_api_key, environment=pinecone_env)
+    if pinecone_index not in pinecone.list_indexes():
+        pinecone.create_index(pinecone_index, dimension=1536, metric="cosine")
+    vectorstore = PineconeVectorStore.from_documents(
+        chunks,
+        embedding=embeddings,
+        index_name=pinecone_index,
+        namespace=namespace
+    )
+    print(f"[Ingestion] Ingested {len(chunks)} chunks to Pinecone index '{pinecone_index}' (namespace: {namespace})")
     return vectorstore
 
 # ---------------------------------------------------------
