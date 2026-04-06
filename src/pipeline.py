@@ -120,6 +120,6 @@ if user_input := st.chat_input("How can I help you today?"):
             except Exception as e:
                 error_msg = str(e)
                 if "insufficient_quota" in error_msg or "429" in error_msg:
-                    st.error("⚠️ OpenAI API quota exceeded. Please check your billing details and add credits to your OpenAI account (platform.openai.com).")
+                    st.error("⚠️ API quota exceeded or Rate Limit reached (Error 429). Please check your API usage limits (OpenAI/Gemini).")
                 else:
                     st.error(f"⚠️ An error occurred during response generation: {error_msg}")

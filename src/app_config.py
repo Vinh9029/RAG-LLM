@@ -2,7 +2,8 @@ import os
 from dotenv import load_dotenv
 from langchain_core.globals import set_llm_cache
 from langchain_community.cache import InMemoryCache
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_community.embeddings import HuggingFaceEmbeddings
 
 # Load environment variables from .env file
 load_dotenv()
@@ -32,14 +33,9 @@ class AppConfig:
         # Initialize shared instances
         self.llm = ChatGoogleGenerativeAI(model=self.llm_model, temperature=self.temperature)
 
-        # Embeddings: Ưu tiên OpenAI nếu có key, fallback sang Gemini nếu không
-        openai_key = os.getenv("OPENAI_API_KEY")
-        if openai_key:
-            from langchain_openai import OpenAIEmbeddings
-            self.embeddings = OpenAIEmbeddings(model="text-embedding-3-large", dimensions=1024)
-            self.embedding_dimension = 1024
-        else:
-            self.embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
-            self.embedding_dimension = 768
+        # Local Embeddings: Sử dụng HuggingFace miễn phí chạy trên máy (Local)
+        local_embedding_model = os.getenv("LOCAL_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+        self.embeddings = HuggingFaceEmbeddings(model_name=local_embedding_model)
+        self.embedding_dimension = 384  # Dimension của all-MiniLM-L6-v2 là 384
 
 config = AppConfig()
