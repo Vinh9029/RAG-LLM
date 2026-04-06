@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 from langchain_core.globals import set_llm_cache
 from langchain_community.cache import InMemoryCache
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 # Load environment variables from .env file
 load_dotenv()
