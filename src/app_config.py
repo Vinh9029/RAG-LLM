@@ -34,8 +34,8 @@ class AppConfig:
         self.llm = ChatGoogleGenerativeAI(model=self.llm_model, temperature=self.temperature)
 
         # Local Embeddings: Sử dụng HuggingFace miễn phí chạy trên máy (Local)
-        local_embedding_model = os.getenv("LOCAL_EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5")
+        local_embedding_model = os.getenv("LOCAL_EMBEDDING_MODEL", "intfloat/multilingual-e5-large")
         self.embeddings = HuggingFaceEmbeddings(model_name=local_embedding_model)
-        self.embedding_dimension = 1024  # Dimension của bge-large-en-v1.5 là 1024
+        self.embedding_dimension = 1024  # Dimension của multilingual-e5-large là 1024
 
 config = AppConfig()

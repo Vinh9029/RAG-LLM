@@ -88,14 +88,8 @@ if user_input := st.chat_input("How can I help you today?"):
                 
                 lang = generator.detect_language(user_input)
                 log_msgs.append(f"[Log] Detected language: {lang}")
-                translated_query = user_input
-                if lang == 'vi':
-                    translated_query = generator.translate_query_to_english(user_input)
-                    log_msgs.append(f"[Log] Translated query: {translated_query}")
-                else:
-                    log_msgs.append("[Log] No translation needed.")
                     
-                expanded_query = generator.expand_query(translated_query)
+                expanded_query = generator.expand_query(user_input)
                 log_msgs.append(f"[Log] Expanded query: {expanded_query}")
                 
                 t1 = time.time()
@@ -103,9 +97,16 @@ if user_input := st.chat_input("How can I help you today?"):
                 t2 = time.time()
                 log_msgs.append(f"[Log] Vector DB search time: {t2-t1:.3f} seconds")
                 
-                answer = generator.generate_response(user_input, expanded_query, retriever, severe_level, mental_status)
+                log_msgs.append("\n[Log] --- TOP 4 RETRIEVED CHUNKS ---")
+                for i, doc in enumerate(docs[:4]):
+                    log_msgs.append(f"--- Chunk {i+1} ---\n{doc.page_content}\n")
+                
+                answer, raw_prompt = generator.generate_response(user_input, expanded_query, docs, severe_level, mental_status)
                 t3 = time.time()
                 log_msgs.append(f"[Log] LLM generation time: {t3-t2:.3f} seconds")
+                
+                log_msgs.append("\n[Log] --- FINAL PROMPT SENT TO LLM ---")
+                log_msgs.append(raw_prompt)
                 
                 # Display final answer
                 st.markdown(answer)

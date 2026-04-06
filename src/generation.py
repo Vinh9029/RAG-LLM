@@ -11,7 +11,7 @@ class ResponseGenerator:
     def __init__(self, llm):
         self.llm = llm
         self.memory = ConversationBufferWindowMemory(
-            k=5, return_messages=True, memory_key="chat_history"
+            k=2, return_messages=True, memory_key="chat_history"
         )
 
     def detect_language(self, text: str) -> str:
@@ -25,67 +25,36 @@ class ResponseGenerator:
         except LangDetectException:
             return 'en'  # Default to English if detection fails
 
-    def translate_query_to_english(self, query: str) -> str:
-        """
-        If query is in Vietnamese, translate it to English.
-        Uses LLM as translator to maintain context awareness.
-        """
-        lang = self.detect_language(query)
-        
-        if lang == 'vi':
-            translation_prompt = PromptTemplate.from_template(
-                """You are a professional translator. 
-                Translate the following Vietnamese text to English while preserving the original meaning and medical/psychological context.
-                
-                Vietnamese text: {query}
-                English translation:"""
-            )
-            chain = translation_prompt | self.llm | StrOutputParser()
-            translated_query = chain.invoke({"query": query})
-            return translated_query
-        
-        # Already in English, return as is
-        return query
-
     def expand_query(self, user_query: str) -> str:
         """
         Expand and clarify the user's query using LLM.
         Identifies mental health conditions (Depression, Anxiety, Bipolar, Suicidal, etc.)
         and adds relevant psychological keywords to optimize vector search.
-        
-        This uses the translated (English) version for consistency with English PDF documents.
         """
-        # First, translate Vietnamese query to English
-        english_query = self.translate_query_to_english(user_query)
-        
         rewrite_prompt = PromptTemplate.from_template(
             """You are an expert mental health professional and psychologist. 
-            Your task is to expand and clarify the user's question to optimize searching in a medical/psychological database.
+            Your task is to analyze the user's question (which may be in any language), identify potential mental health conditions, and generate relevant psychological keywords in ENGLISH to optimize searching in a medical database.
             
-            Identify which mental health condition the user might be experiencing (e.g., Depression, Anxiety, PTSD, Bipolar Disorder, Personality Disorder, Suicidal Ideation, Stress, etc.)
-            and add relevant psychological keywords accordingly.
             
             Examples:
-            - "I feel sad and hopeless" -> "depression, low mood, hopelessness, anhedonia, negative thoughts, persistent sadness"
+            - "Tôi cảm thấy rất buồn và tuyệt vọng" -> "depression, low mood, hopelessness, anhedonia, negative thoughts, persistent sadness"
             - "I'm worried about everything" -> "anxiety, generalized anxiety disorder, worry, nervousness, panic, stress"
-            - "I want to hurt myself" -> "suicidal ideation, self-harm, self-injury, suicide risk, mental health crisis"
             
-            Return ONLY the expanded query without explanations.
+            Return ONLY the expanded ENGLISH keywords without explanations.
             
             Original user query: {query}
-            Expanded query:"""
+            Expanded English query:"""
         )
         
         chain = rewrite_prompt | self.llm | StrOutputParser()
-        expanded_query = chain.invoke({"query": english_query})
+        expanded_query = chain.invoke({"query": user_query})
         return expanded_query
 
-    def generate_response(self, user_query: str, expanded_query: str, retriever, severe_level: str, mental_status: str) -> str:
+    def generate_response(self, user_query: str, expanded_query: str, docs: list, severe_level: str, mental_status: str):
         """
         Generate the final response using retrieved context and conversation history.
         Converts response to original language if user queried in Vietnamese.
         """
-        docs = retriever.invoke(expanded_query)
         context = "\n\n".join([doc.page_content for doc in docs])
         chat_history = self.memory.load_memory_variables({})["chat_history"]
         
@@ -101,6 +70,7 @@ class ResponseGenerator:
         3. Respond with warmth, positivity, and hope. If the context lacks relevant information, acknowledge this and recommend consulting a mental health professional.
         4. Respect cultural and individual differences in mental health experiences.
         5. Never provide medical diagnoses; instead, suggest symptoms to discuss with a healthcare provider.
+        6. IMPORTANT: You MUST respond in the SAME LANGUAGE as the user's original query. For example, if the user asks in Vietnamese, your entire response must be in Vietnamese, interpreting the English context appropriately.
         
         Retrieved context for reference:
         {context}"""
@@ -111,7 +81,7 @@ class ResponseGenerator:
             ("human", "User: {query}")
         ])
         
-        response = (prompt_template | self.llm | StrOutputParser()).invoke({
+        prompt_value = prompt_template.invoke({
             "context": context,
             "chat_history": chat_history,
             "query": expanded_query,  # Use expanded query for better semantic understanding
@@ -119,30 +89,10 @@ class ResponseGenerator:
             "mental_status": mental_status
         })
         
+        formatted_prompt = prompt_value.to_string()
+        response = (self.llm | StrOutputParser()).invoke(prompt_value)
+        
         # Save original user query to memory for consistency
-        self.memory.save_context({"input": user_query}, {"output": response})
+        self.memory.save_context({"input": user_query}, {"output": response})   
         
-        # Translate response back to Vietnamese if user queried in Vietnamese
-        user_lang = self.detect_language(user_query)
-        if user_lang == 'vi':
-            response = self.translate_response_to_vietnamese(response)
-        
-        return response
-
-    def translate_response_to_vietnamese(self, response: str) -> str:
-        """
-        Translate English response back to Vietnamese for Vietnamese-speaking users.
-        """
-        translation_prompt = PromptTemplate.from_template(
-            """You are a professional translator specializing in medical and psychological terminology.
-            Translate the following English mental health support response to Vietnamese.
-            Preserve all medical/psychological terms accurately and maintain the tone of empathy and support.
-            
-            English text:
-            {response}
-            
-            Vietnamese translation:"""
-        )
-        chain = translation_prompt | self.llm | StrOutputParser()
-        translated_response = chain.invoke({"response": response})
-        return translated_response
+        return response, formatted_prompt
