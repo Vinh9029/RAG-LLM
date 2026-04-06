@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 from langchain_core.globals import set_llm_cache
 from langchain_community.cache import InMemoryCache
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 # Load environment variables from .env file
 load_dotenv()
@@ -34,8 +34,8 @@ class AppConfig:
         self.llm = ChatGoogleGenerativeAI(model=self.llm_model, temperature=self.temperature)
 
         # Local Embeddings: Sử dụng HuggingFace miễn phí chạy trên máy (Local)
-        local_embedding_model = os.getenv("LOCAL_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+        local_embedding_model = os.getenv("LOCAL_EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5")
         self.embeddings = HuggingFaceEmbeddings(model_name=local_embedding_model)
-        self.embedding_dimension = 384  # Dimension của all-MiniLM-L6-v2 là 384
+        self.embedding_dimension = 1024  # Dimension của bge-large-en-v1.5 là 1024
 
 config = AppConfig()

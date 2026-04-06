@@ -26,7 +26,14 @@ class DocumentIngestor:
         documents = loader.load()
         chunks = self.text_splitter.split_documents(documents)
         # Create index if not exists
-        if self.pinecone_index not in self.pc.list_indexes().names():
+        existing_indexes = self.pc.list_indexes().names()
+        if self.pinecone_index in existing_indexes:
+            index_info = self.pc.describe_index(self.pinecone_index)
+            if index_info.dimension != self.embedding_dimension:
+                print(f"[Warning] Index dimension mismatch (expected {self.embedding_dimension}, got {index_info.dimension}). Deleting old index...")
+                self.pc.delete_index(self.pinecone_index)
+                self.pc.create_index(name=self.pinecone_index, dimension=self.embedding_dimension, metric="cosine", spec=ServerlessSpec(cloud="aws", region=self.pinecone_env))
+        else:
             self.pc.create_index(name=self.pinecone_index, dimension=self.embedding_dimension, metric="cosine", spec=ServerlessSpec(cloud="aws", region=self.pinecone_env))
         vectorstore = PineconeVectorStore.from_documents(
             chunks,
@@ -43,3 +50,14 @@ class DocumentIngestor:
             embedding=self.embeddings,
             namespace=namespace
         )
+
+if __name__ == "__main__":
+    import sys
+    import os
+    sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+    from app_config import config
+    
+    print(f"Implement PDF documents: {config.pdf_directory}...")
+    ingestor = DocumentIngestor(config.embeddings, config.chunk_size, config.chunk_overlap, getattr(config, 'embedding_dimension', 384))
+    ingestor.process_pdf_directory_to_pinecone(config.pdf_directory, namespace="cbt")
+    print("Complet pushing the data on Pinecone!")
