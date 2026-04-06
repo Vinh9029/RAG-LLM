@@ -80,7 +80,7 @@ class ResponseGenerator:
         expanded_query = chain.invoke({"query": english_query})
         return expanded_query
 
-    def generate_response(self, user_query: str, expanded_query: str, retriever) -> str:
+    def generate_response(self, user_query: str, expanded_query: str, retriever, severe_level: str, mental_status: str) -> str:
         """
         Generate the final response using retrieved context and conversation history.
         Converts response to original language if user queried in Vietnamese.
@@ -114,7 +114,9 @@ class ResponseGenerator:
         response = (prompt_template | self.llm | StrOutputParser()).invoke({
             "context": context,
             "chat_history": chat_history,
-            "query": expanded_query  # Use expanded query for better semantic understanding
+            "query": expanded_query,  # Use expanded query for better semantic understanding
+            "severe_level": severe_level,
+            "mental_status": mental_status
         })
         
         # Save original user query to memory for consistency
