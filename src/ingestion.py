@@ -1,5 +1,5 @@
 from langchain_community.document_loaders import PyPDFDirectoryLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_pinecone import PineconeVectorStore
 from pinecone import Pinecone, ServerlessSpec
 import os
@@ -7,8 +7,9 @@ from dotenv import load_dotenv
 
 class DocumentIngestor:
     """Chịu trách nhiệm Load tài liệu và tạo Vector Database trên Pinecone."""
-    def __init__(self, embeddings, chunk_size: int = 1000, chunk_overlap: int = 200):
+    def __init__(self, embeddings, chunk_size: int = 1000, chunk_overlap: int = 200, embedding_dimension: int = 768):
         self.embeddings = embeddings
+        self.embedding_dimension = embedding_dimension
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
@@ -25,8 +26,8 @@ class DocumentIngestor:
         documents = loader.load()
         chunks = self.text_splitter.split_documents(documents)
         # Create index if not exists
-        if self.pinecone_index not in [idx.name for idx in self.pc.list_indexes()]:
-            self.pc.create_index(name=self.pinecone_index, dimension=768, metric="cosine", spec=ServerlessSpec(cloud="aws", region=self.pinecone_env))
+        if self.pinecone_index not in self.pc.list_indexes().names():
+            self.pc.create_index(name=self.pinecone_index, dimension=self.embedding_dimension, metric="cosine", spec=ServerlessSpec(cloud="aws", region=self.pinecone_env))
         vectorstore = PineconeVectorStore.from_documents(
             chunks,
             embedding=self.embeddings,

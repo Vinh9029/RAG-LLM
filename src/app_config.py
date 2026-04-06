@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from langchain.globals import set_llm_cache
+from langchain_core.globals import set_llm_cache
 from langchain_community.cache import InMemoryCache
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 
@@ -31,6 +31,15 @@ class AppConfig:
         
         # Initialize shared instances
         self.llm = ChatGoogleGenerativeAI(model=self.llm_model, temperature=self.temperature)
-        self.embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+
+        # Embeddings: Ưu tiên OpenAI nếu có key, fallback sang Gemini nếu không
+        openai_key = os.getenv("OPENAI_API_KEY")
+        if openai_key:
+            from langchain_openai import OpenAIEmbeddings
+            self.embeddings = OpenAIEmbeddings(model="text-embedding-3-large", dimensions=1024)
+            self.embedding_dimension = 1024
+        else:
+            self.embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+            self.embedding_dimension = 768
 
 config = AppConfig()

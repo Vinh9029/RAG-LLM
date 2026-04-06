@@ -106,7 +106,7 @@ class ResponseGenerator:
         {context}"""
         
         prompt_template = ChatPromptTemplate.from_messages([
-            SystemMessage(content=system_prompt),
+            ("system", system_prompt),
             MessagesPlaceholder(variable_name="chat_history"),
             ("human", "User: {query}")
         ])

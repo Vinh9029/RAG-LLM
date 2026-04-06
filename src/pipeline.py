@@ -51,7 +51,7 @@ if st.session_state.get("startup", True):
 # Init pipeline
 @st.cache_resource
 def get_pipeline():
-    ingest = DocumentIngestor(config.embeddings, config.chunk_size, config.chunk_overlap)
+    ingest = DocumentIngestor(config.embeddings, config.chunk_size, config.chunk_overlap, getattr(config, 'embedding_dimension', 768))
     vectorstore = ingest.get_pinecone_vectorstore(namespace="cbt")
     retriever = AdvancedRetriever(vectorstore, config.cross_encoder_model, config.search_k, config.top_n).get_retriever()
     generator = ResponseGenerator(config.llm)
