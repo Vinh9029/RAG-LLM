@@ -1,6 +1,6 @@
 import os
 import pinecone
-import google.generativeai as genai
+from openai import OpenAI
 from dotenv import load_dotenv
 from pinecone import Pinecone
 
@@ -19,19 +19,18 @@ try:
 except Exception as e:
     print(f"Pinecone error: {e}")
 
-# Check Gemini (by listing available models, then checking the using model)
-print("\n=== Gemini Model Test ===")
+# Check Local LLM (LM Studio)
+print("\n=== LM Studio Local LLM Test ===")
 try:
-    genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-    models = list(genai.list_models())
-    print("Available Gemini models:")
-    for m in models:
-        print(f"- {m.name} (methods: {m.supported_generation_methods})")
-    model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-    found = any(model_name in m.name for m in models)
-    if found:
-        print(f"Model '{model_name}' is available!")
-    else:
-        print(f"Model '{model_name}' is NOT available for your API key!")
+    base_url = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:1234/v1")
+    api_key = os.getenv("LOCAL_LLM_API_KEY", "lm-studio")
+    client = OpenAI(base_url=base_url, api_key=api_key)
+    
+    models = client.models.list()
+    print(f"Connected successfully to LM Studio at {base_url}!")
+    print("Available loaded models:")
+    for m in models.data:
+        print(f"- {m.id}")
 except Exception as e:
-    print(f"Gemini error: {e}")
+    print(f"LM Studio connection error: {e}")
+    print("Please ensure LM Studio is running, the model is loaded, and the Local Server is started on port 1234.")

@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 from langchain_core.globals import set_llm_cache
 from langchain_community.cache import InMemoryCache
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langchain_huggingface import HuggingFaceEmbeddings
 
 # Load environment variables from .env file
@@ -15,7 +15,7 @@ class AppConfig:
         set_llm_cache(InMemoryCache())
         
         # LLM Configuration (read from .env)
-        self.llm_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+        self.llm_model = os.getenv("LOCAL_LLM_MODEL", "gpt-oss-20b")
         self.temperature = float(os.getenv("TEMPERATURE", 0.3))
         self.cross_encoder_model = os.getenv("CROSS_ENCODER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
         
@@ -31,7 +31,15 @@ class AppConfig:
         self.pdf_directory = os.getenv("PDF_DIRECTORY", "./mental_health_docs")
         
         # Initialize shared instances
-        self.llm = ChatGoogleGenerativeAI(model=self.llm_model, temperature=self.temperature)
+        self.local_llm_base_url = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:1234/v1")
+        self.local_llm_api_key = os.getenv("LOCAL_LLM_API_KEY", "lm-studio")
+        
+        self.llm = ChatOpenAI(
+            model=self.llm_model, 
+            temperature=self.temperature,
+            base_url=self.local_llm_base_url,
+            api_key=self.local_llm_api_key
+        )
 
         # Local Embeddings: Sử dụng HuggingFace miễn phí chạy trên máy (Local)
         local_embedding_model = os.getenv("LOCAL_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
