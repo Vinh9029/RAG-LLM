@@ -92,10 +92,9 @@ class ResponseGenerator:
 
     def generate_response(self, user_query: str, expanded_query: str, retriever, severe_level: str, mental_status: str, is_vietnamese: bool = False) -> str:
         """
-        VIETNAMESE OPTIMIZATION (LLM Call #2):
-        - Generate mental health response using context
-        - If Vietnamese: ALSO translate response back to Vietnamese in SAME call
-        - This replaces 2 separate calls (generate + translate) into 1 call
+        OPTIMIZED (LLM Call #2):
+        - Generate mental health response ONLY in detected language
+        - Saves tokens by not generating unnecessary language versions
         
         Args:
             user_query: Original user query (for memory)
@@ -103,30 +102,29 @@ class ResponseGenerator:
             retriever: Vector store retriever
             severe_level: Mental health severity level
             mental_status: Mental health condition type
-            is_vietnamese: Whether to translate response to Vietnamese
+            is_vietnamese: Whether response should be in Vietnamese
         """
         docs = retriever.invoke(expanded_query)
         context = "\n\n".join([doc.page_content for doc in docs])
         chat_history = self.memory.load_memory_variables({})["chat_history"]
         
         if is_vietnamese:
-            # COMBINED: Generate response EN + Return in VI (single LLM call)
-            system_prompt = """You are a compassionate, empathetic mental health assistant.
-User's severity: {severe_level}
-User's mental status: {mental_status}
+            # Generate ONLY in Vietnamese (no English generation waste)
+            system_prompt = """Bạn là một trợ lý hỗ trợ sức khỏe tâm thần thông tuệ, thông cảm và không phán xét.
+Vai trò của bạn là cung cấp lời khuyên dựa trên bằng chứng, bài tập liệu pháp và chiến lược đối phó dựa trên bối cảnh được cung cấp.
 
-CRITICAL:
-1. If the user shows signs of suicidal ideation or self-harm, IMMEDIATELY provide crisis helpline numbers (e.g., National Suicide Prevention Lifeline: 988 in the US, or equivalent in the user's country) BEFORE any other response.
-2. Always remind users that you are an AI assistant and cannot replace professional mental health care from licensed therapists or psychiatrists.
-3. Respond with warmth, positivity, and hope. If the context lacks relevant information, acknowledge this and recommend consulting a mental health professional.
-4. Respect cultural and individual differences in mental health experiences.
-5. Never provide medical diagnoses; instead, suggest symptoms to discuss with a healthcare provider.
+Mức độ nghiêm trọng của người dùng: {severe_level}
+Trạng thái sức khỏe tâm thần: {mental_status}
 
-Retrieved context:
-{context}
+QUY TẮC AN TOÀN QUAN TRỌNG:
+1. Nếu người dùng cho thấy dấu hiệu tự tổn thương hoặc tự sát, HÃY NGAY LẬP TỨC cung cấp số điện thoại đường dây nóng khủng hoảng (ví dụ: 1925 - Đường dây nóng tâm lý tại Việt Nam) TRƯỚC khi đưa ra bất kỳ phản hồi nào khác.
+2. Luôn nhắc nhở người dùng rằng bạn là một trợ lý AI và không thể thay thế chăm sóc sức khỏe tâm thần chuyên nghiệp từ các bác sĩ tâm lý có giấy phép.
+3. Phản hồi với sự ấm áp, tích cực và lạc quan. Nếu bối cảnh thiếu thông tin có liên quan, hãy thừa nhận điều này và khuyến nghị tham khảo ý kiến chuyên gia sức khỏe tâm thần.
+4. Tôn trọng sự khác biệt về văn hóa và cá nhân trong trải nghiệm sức khỏe tâm thần.
+5. Không bao giờ chẩn đoán y tế; thay vào đó, đề nghị các triệu chứng để thảo luận với nhà cung cấp dịch vụ chăm sóc sức khỏe.
 
----AFTER YOUR RESPONSE, TRANSLATE IT TO VIETNAMESE---
-Format: [RESPONSE_EN]: [English response] | [RESPONSE_VI]: [Vietnamese response only]"""
+Bối cảnh truy xuất để tham khảo:
+{context}"""
             
             prompt_template = ChatPromptTemplate.from_messages([
                 ("system", system_prompt),
@@ -134,20 +132,13 @@ Format: [RESPONSE_EN]: [English response] | [RESPONSE_VI]: [Vietnamese response 
                 ("human", "{query}")
             ])
             
-            combined_response = (prompt_template | self.llm | StrOutputParser()).invoke({
+            response = (prompt_template | self.llm | StrOutputParser()).invoke({
                 "context": context,
                 "chat_history": chat_history,
                 "query": expanded_query,
                 "severe_level": severe_level,
                 "mental_status": mental_status
             })
-            
-            # Extract Vietnamese response
-            try:
-                parts = combined_response.split(" | [RESPONSE_VI]: ")
-                response = parts[1].strip() if len(parts) > 1 else parts[0]
-            except:
-                response = combined_response.strip()
         
         else:
             # English only (single LLM call)
