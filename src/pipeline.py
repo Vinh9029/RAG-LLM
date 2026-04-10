@@ -102,13 +102,18 @@ if user_input := st.chat_input("How can I help you today?"):
                 docs = retriever.invoke(expanded_query)
                 t2 = time.time()
                 log_msgs.append(f"[Log] Vector DB search time: {t2-t1:.3f} seconds")
+                log_msgs.append(f"[Log] Retrieved {len(docs)} documents")
                 
                 answer = generator.generate_response(user_input, expanded_query, retriever, severe_level, mental_status)
                 t3 = time.time()
                 log_msgs.append(f"[Log] LLM generation time: {t3-t2:.3f} seconds")
+                log_msgs.append(f"[Log] Response length: {len(str(answer)) if answer else 0} chars")
                 
                 # Display final answer
-                st.markdown(answer)
+                if answer and answer.strip():
+                    st.markdown(answer)
+                else:
+                    st.warning("⚠️ Empty response received from the LLM. Check logs for details.")
                 
                 joined_logs = "\n".join(log_msgs)
                 if show_logs:
@@ -119,7 +124,12 @@ if user_input := st.chat_input("How can I help you today?"):
                 st.session_state.chat_history.append({"role": "assistant", "content": answer, "logs": joined_logs})
             except Exception as e:
                 error_msg = str(e)
-                if "insufficient_quota" in error_msg or "429" in error_msg:
+                import traceback
+                print("Full traceback:", traceback.format_exc())
+                
+                if "Model reloaded" in error_msg:
+                    st.error("🔄 **LM Studio is reloading the model.** This usually means it ran out of memory.\n\n**Suggested fixes:**\n1. Lower the **Context Size** in LM Studio settings (try 2048)\n2. Disable long prompts and try again\n3. Consider using a smaller model")
+                elif "insufficient_quota" in error_msg or "429" in error_msg:
                     st.error("⚠️ OpenAI API quota exceeded. Please check your billing details and add credits to your OpenAI account (platform.openai.com).")
                 else:
-                    st.error(f"⚠️ An error occurred during response generation: {error_msg}")
+                    st.error(f"⚠️ An error occurred during response generation:\n\n{error_msg}\n\nCheck terminal for full traceback.")

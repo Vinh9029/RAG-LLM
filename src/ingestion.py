@@ -1,6 +1,6 @@
 from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_pinecone import PineconeVectorStore
+from langchain_community.vectorstores import Pinecone as PineconeVectorStore
 from pinecone import Pinecone, ServerlessSpec
 import os
 from dotenv import load_dotenv
@@ -21,25 +21,33 @@ class DocumentIngestor:
         self.pinecone_index = os.getenv("PINECONE_INDEX")
         self.pc = Pinecone(api_key=self.pinecone_api_key)
 
-    def process_pdf_directory_to_pinecone(self, pdf_directory: str, namespace: str = "cbt") -> PineconeVectorStore:
+    def process_pdf_directory_to_pinecone(self, pdf_directory: str, namespace: str = "cbt"):
         loader = PyPDFDirectoryLoader(pdf_directory)
         documents = loader.load()
         chunks = self.text_splitter.split_documents(documents)
         # Create index if not exists
         if self.pinecone_index not in self.pc.list_indexes().names():
             self.pc.create_index(name=self.pinecone_index, dimension=self.embedding_dimension, metric="cosine", spec=ServerlessSpec(cloud="aws", region=self.pinecone_env))
+        
+        # Get index and create vectorstore
+        index = self.pc.Index(self.pinecone_index)
         vectorstore = PineconeVectorStore.from_documents(
             chunks,
             embedding=self.embeddings,
-            index_name=self.pinecone_index,
-            namespace=namespace
+            index=index,
+            namespace=namespace,
+            text_key="page_content"
         )
         print(f"[Ingestion] Ingested {len(chunks)} chunks to Pinecone index '{self.pinecone_index}' (namespace: {namespace})")
         return vectorstore
 
-    def get_pinecone_vectorstore(self, namespace: str = "cbt") -> PineconeVectorStore:
-        return PineconeVectorStore(
-            index_name=self.pinecone_index,
+    def get_pinecone_vectorstore(self, namespace: str = "cbt"):
+        """Get a Pinecone vectorstore from the current index."""
+        index = self.pc.Index(self.pinecone_index)
+        vectorstore = PineconeVectorStore(
+            index=index,
             embedding=self.embeddings,
-            namespace=namespace
+            namespace=namespace,
+            text_key="page_content"
         )
+        return vectorstore

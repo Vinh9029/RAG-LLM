@@ -1,18 +1,61 @@
-from langchain.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import SystemMessage
-from langchain_core.output_parsers import StrOutputParser
-from langchain.memory import ConversationBufferWindowMemory
+try:
+    from langchain_core.prompts import PromptTemplate
+except (ImportError, AttributeError):
+    try:
+        from langchain.prompts import PromptTemplate
+    except (ImportError, AttributeError):
+        from langchain_core.prompts.template import PromptTemplate
+        
+try:
+    from langchain_core.output_parsers import StrOutputParser
+except ImportError:
+    from langchain.output_parsers import StrOutputParser
+    
 import langdetect
 from langdetect import detect, LangDetectException
+import time
 
 class ResponseGenerator:
     """Responsible for prompt creation, memory management, and LLM calls."""
     # Initialize with LLM and memory for conversation history. Memory keeps the last 5 interactions for context.
     def __init__(self, llm):
         self.llm = llm
-        self.memory = ConversationBufferWindowMemory(
-            k=5, return_messages=True, memory_key="chat_history"
-        )
+        self.chat_history = []  # Simple list to store conversation history
+        self.k = 5  # Keep last 5 interactions
+        self.max_retries = 3
+        self.retry_delay = 2  # seconds
+    
+    def _invoke_with_retry(self, chain, input_data, max_retries=None):
+        """Invoke LLM chain with retry logic for model reload errors."""
+        if max_retries is None:
+            max_retries = self.max_retries
+            
+        for attempt in range(max_retries):
+            try:
+                response = chain.invoke(input_data)
+                if response and response.strip():  # Check response is not empty
+                    return response
+                print(f"[Attempt {attempt+1}] Empty response from LLM, retrying...")
+            except Exception as e:
+                error_str = str(e)
+                if "Model reloaded" in error_str or "error" in error_str.lower():
+                    if attempt < max_retries - 1:
+                        print(f"[Attempt {attempt+1}] Model error: {error_str[:100]}... Retrying in {self.retry_delay}s")
+                        time.sleep(self.retry_delay)
+                        continue
+                raise
+        
+        return ""  # Return empty string if all retries failed
+    
+    def _add_to_history(self, message: str):
+        """Add a message to chat history, keeping only last k interactions."""
+        self.chat_history.append(message)
+        if len(self.chat_history) > self.k * 2:  # k conversations = k*2 messages (user + assistant)
+            self.chat_history = self.chat_history[-self.k*2:]
+    
+    def _get_recent_history(self) -> list:
+        """Get recent chat history for context."""
+        return self.chat_history[-self.k*2:] if self.chat_history else []
 
     def detect_language(self, text: str) -> str:
         """
@@ -86,45 +129,40 @@ class ResponseGenerator:
         Converts response to original language if user queried in Vietnamese.
         """
         docs = retriever.invoke(expanded_query)
-        context = "\n\n".join([doc.page_content for doc in docs])
-        chat_history = self.memory.load_memory_variables({})["chat_history"]
+        # Limit context to first 1 doc only to save memory
+        docs = docs[:1]
+        context = docs[0].page_content if docs else "No relevant information found."
         
-        system_prompt = """You are a compassionate, empathetic, and non-judgmental Virtual Assistant for Mental Health Support.
-        Your role is to provide evidence-based advice, therapeutic exercises, and coping strategies based on the provided context.
+        # Get recent chat history (limit to just last exchange)
+        chat_history_list = self._get_recent_history()[-2:] if self._get_recent_history() else []
+        chat_history_text = "\n".join(chat_history_list) if chat_history_list else ""
+        
+        # Ultra-minimal system prompt
+        system_prompt = """You are a helpful mental health assistant. Give brief, supportive advice based on the context.
 
-        User's severe level: {severe_level}
-        User's mental health status: {mental_status}
+Context: {context}
+
+Chat: {chat_history}"""
         
-        CRITICAL SAFETY RULES:
-        1. If the user shows signs of suicidal ideation or self-harm, IMMEDIATELY provide crisis helpline numbers (e.g., National Suicide Prevention Lifeline: 988 in the US, or equivalent in the user's country) BEFORE any other response.
-        2. Always remind users that you are an AI assistant and cannot replace professional mental health care from licensed therapists or psychiatrists.
-        3. Respond with warmth, positivity, and hope. If the context lacks relevant information, acknowledge this and recommend consulting a mental health professional.
-        4. Respect cultural and individual differences in mental health experiences.
-        5. Never provide medical diagnoses; instead, suggest symptoms to discuss with a healthcare provider.
+        prompt_template = PromptTemplate.from_template(system_prompt + "\n\nUser: {query}\nAssistant:")
         
-        Retrieved context for reference:
-        {context}"""
+        response = self._invoke_with_retry(
+            (prompt_template | self.llm | StrOutputParser()),
+            {
+                "context": context[:500],  # Truncate context to 500 chars max
+                "chat_history": chat_history_text[:200],  # Truncate history to 200 chars
+                "query": user_query[:100]  # Truncate query to 100 chars
+            }
+        )
         
-        prompt_template = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            MessagesPlaceholder(variable_name="chat_history"),
-            ("human", "User: {query}")
-        ])
-        
-        response = (prompt_template | self.llm | StrOutputParser()).invoke({
-            "context": context,
-            "chat_history": chat_history,
-            "query": expanded_query,  # Use expanded query for better semantic understanding
-            "severe_level": severe_level,
-            "mental_status": mental_status
-        })
-        
-        # Save original user query to memory for consistency
-        self.memory.save_context({"input": user_query}, {"output": response})
+        # Save to chat history
+        self._add_to_history(f"User: {user_query}")
+        if response:
+            self._add_to_history(f"Assistant: {response[:200]}")  # Store only first 200 chars
         
         # Translate response back to Vietnamese if user queried in Vietnamese
         user_lang = self.detect_language(user_query)
-        if user_lang == 'vi':
+        if user_lang == 'vi' and response:
             response = self.translate_response_to_vietnamese(response)
         
         return response
@@ -133,16 +171,19 @@ class ResponseGenerator:
         """
         Translate English response back to Vietnamese for Vietnamese-speaking users.
         """
+        # Truncate very long responses to save memory
+        response = response[:300]
+        
         translation_prompt = PromptTemplate.from_template(
-            """You are a professional translator specializing in medical and psychological terminology.
-            Translate the following English mental health support response to Vietnamese.
-            Preserve all medical/psychological terms accurately and maintain the tone of empathy and support.
+            """Translate to Vietnamese:
             
-            English text:
-            {response}
-            
-            Vietnamese translation:"""
+English: {response}
+Vietnamese:"""
         )
         chain = translation_prompt | self.llm | StrOutputParser()
-        translated_response = chain.invoke({"response": response})
-        return translated_response
+        translated_response = self._invoke_with_retry(
+            chain,
+            {"response": response},
+            max_retries=2
+        )
+        return translated_response if translated_response else response
